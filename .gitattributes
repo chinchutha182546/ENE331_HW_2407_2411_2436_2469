@@ -23,7 +23,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-unsigned int count;
+
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -34,10 +35,10 @@ unsigned int count;
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 void GPIOB_Config(void) {
-    RCC->AHB1ENR |= (1 << 1);    // Enable GPIOB clock
-    GPIOB->MODER &= ~(3 << (10 * 2)); // Clear mode for PB10
-    GPIOB->MODER |= (2 << (10 * 2));  // Set PB10 as Alternate Function
-    GPIOB->AFR[1] |= (1 << (10 - 8) * 4); // AF1 for TIM2_CH3
+    RCC->AHB1ENR |= (0x01 << 1);  
+    GPIOB->MODER &= ~(0x03 << (10 * 2)); 
+    GPIOB->MODER |= (0x02 << (10 * 2));  
+    GPIOB->AFR[1] |= (0x01 << (10 - 8) * 4); 
 }
 
 void GPIOA_Config(void) {
@@ -45,6 +46,12 @@ void GPIOA_Config(void) {
     GPIOA -> MODER &= ~(0x03 << (1 * 2));
     GPIOA -> MODER|= (0x01 << (6 * 2));
 }
+
+uint8_t lut[] = { 0b001, 0b010, 0b100, 0b000, 0b111 }; 
+uint8_t state = 0; 
+uint8_t max_state = sizeof(lut) / sizeof(lut[0]); 
+uint32_t last_blink = 0;
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -70,22 +77,16 @@ static void MX_TIM2_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-void LED_LUT_Control(void) {
-    static uint8_t state = 0;
-    uint8_t LUT[4] = {0b000, 0b001, 0b011, 0b111};
-    GPIOA->ODR &= ~(0b111 << 1);
-    GPIOA->ODR |= (LUT[state] << 1);
-    state = (state + 1) % 4;
+
+void Set_LED_Array(uint8_t state) {
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); 
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET); 
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET); 
+
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, (lut[state] & 0b001) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, (lut[state] & 0b010) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, (lut[state] & 0b100) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
-
-
-uint32_t lastTime_1;
-uint32_t Settime_1 = 200000;
-
-uint32_t lastTime_2;
-uint32_t Settime_2 = 15000;
-
-
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim) {
 	if(htim -> Instance == TIM2) {
 		count++;
@@ -129,35 +130,37 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   /* USER CODE END 2 */
-
+  GPIOA_Config();
+  GPIOB_Config();
+  HAL_TIM_Base_Start_IT(&htim3);
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  if (count >= 1200) {
-	            GPIOA->ODR ^= (1 << 6);
-	            count = 0;
-	  }
+	   if (HAL_GetTick() - last_blink >= 1)
+  {
+    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_6);
+    last_blink = HAL_GetTick();
+  }
 
-      if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == 0) {
-          count++;
-      }
-      if((count - lastTime_1) >= Settime_1) {
-                  // Your program task
-                  lastTime_1 = count;
-      	    }
+  if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET)
+  {
+  
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
 
-              // Task 2
-      if((count - lastTime_2) >= Settime_2) {
-                  // Your program task
-                  lastTime_2 = count;
-      	    }
-    /* USER CODE END WHILE */
+    if (lut[state] & 0b001) HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
+    if (lut[state] & 0b010) HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET);
+    if (lut[state] & 0b100) HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET);
 
-    /* USER CODE BEGIN 3 */
+    state = (state + 1) % max_state;
+    HAL_Delay(300); // debounce
+  }
+}
   }
   /* USER CODE END 3 */
-}
+
 
 /**
   * @brief System Clock Configuration
